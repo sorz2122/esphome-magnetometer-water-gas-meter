@@ -105,20 +105,20 @@ number:
     optimistic: true
     unit_of_measurement: ${volume_unit}
 
-  - platform: template
-    id: ${prefix_id}temperature_offset
-    name: ${prefix_name}Temperature Offset
-    unit_of_measurement: '°C'
-    min_value: -100
-    max_value: 100
-    step: 0.1
-    mode: box
-    update_interval: never
-    optimistic: true
-    restore_value: true
-    initial_value: 33
-    icon: 'mdi:thermometer'
-    entity_category: config
+  # - platform: template
+  #   id: ${prefix_id}temperature_offset
+  #   name: ${prefix_name}Temperature Offset
+  #   unit_of_measurement: '°C'
+  #   min_value: -100
+  #   max_value: 100
+  #   step: 0.1
+  #   mode: box
+  #   update_interval: never
+  #   optimistic: true
+  #   restore_value: true
+  #   initial_value: 33
+  #   icon: 'mdi:thermometer'
+  #   entity_category: config
 
   - platform: template
     id: ${prefix_id}threshold_lower
@@ -321,17 +321,17 @@ sensor:
               }
       filters:
         - delta: 3
-    temperature:
-      id: ${prefix_id}qmc5883l_temperature
-      name: ${prefix_name}Temperature
-      filters:
-        - lambda: "return x + id(${prefix_id}temperature_offset).state;"
-        - sliding_window_moving_average:
-            window_size: 3000
-            send_every: 3000
-        - or:
-            - throttle: 300s
-            - delta: 0.5
+    # temperature:
+    #   id: ${prefix_id}qmc5883l_temperature
+    #   name: ${prefix_name}Temperature
+    #   filters:
+    #     - lambda: "return x + id(${prefix_id}temperature_offset).state;"
+    #     - sliding_window_moving_average:
+    #         window_size: 3000
+    #         send_every: 3000
+    #     - or:
+    #         - throttle: 300s
+    #         - delta: 0.5
     oversampling: ${qmc5883l_oversampling}
     update_interval: ${qmc5883l_update_interval}
 
