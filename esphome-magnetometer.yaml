@@ -24,7 +24,7 @@ substitutions:
   magnetometer_address: '0x1E'
 
   hmc5883l_update_interval: '5ms'
-  #hmc5883l_oversampling: '64x'
+  hmc5883l_oversampling: '64x'
 
   volume_per_half_rotation_initial_value: '0.01008156'
   flow_update_interval_seconds: '10'
