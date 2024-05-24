@@ -1,6 +1,7 @@
+# Dieses Fork verwendet einen HMC588L Sensor anstelle eines QMC5883L. Hier fehlt es an einem Temperatursensor
 # esphome-magnetometer-water-gas-meter [![Made for ESPHome](https://img.shields.io/badge/Made_for-ESPHome-black?logo=esphome)](https://esphome.io)
 
-This [ESPHome](https://esphome.io) package allows reading your water meter or gas meter  using the QMC5883L, a triple-axis magnetometer.
+This [ESPHome](https://esphome.io) package allows reading your water meter or gas meter  using the HMC5883L, a triple-axis magnetometer.
 
 TLDR; Add this to your ESPHome device configuration:
 
