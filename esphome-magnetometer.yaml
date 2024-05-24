@@ -1,4 +1,6 @@
 ---
+# This config uses the HMC5883L, a triple-axis magnetometer, to read your water meter or gas meter.
+
 substitutions:
   # water or gas
   device_class: 'water'
@@ -13,34 +15,27 @@ substitutions:
   i2c_scl: GPIO5  # D1
   i2c_sda: GPIO4  # D2
 
-  # Set these only if you have connected two QMC5883L to one device, see esphome-two-meters.yaml
+  # Set these only if you have connected two HMC5883L to one device, see esphome-two-meters.yaml
   prefix_name: ''
   prefix_id: ''
-  
-  # Set device model (qmc5883l/hmc5883l) and address (0x1D/0x1E)
-  magnetometer: hmc5883l
-  magnetometer_address: '0x1E'
+
+  hmc5883l_update_interval: '5ms'
 
   volume_per_half_rotation_initial_value: '0.01008156'
   flow_update_interval_seconds: '10'
 
 esphome:
-  min_version: "2024.4.0" # This version includes https://github.com/esphome/esphome/pull/6456
-  # Default loop interval is 16ms. Setting it to 0 to make updates faster.
-  # Without setting this, the actual update interval of qmc5883l is: 6ms on ESP32, 10ms on ESP8266.
-  # With this, it's 5ms on ESP32, 8ms on ESP8266.
+  min_version: "2024.4.0"
   on_boot:
     then:
       - lambda: App.set_loop_interval(0);
 
 logger:
   logs:
-    qmc5883l: INFO
+    hmc5883l: INFO
 
 api:
   services:
-    # Based on https://esphome.io/components/sensor/pulse_meter.html#re-setting-the-total-pulse-count
-    # Useful if you would like the total sensor to match what you see on your meter you are trying to match.
     - service: ${prefix_id}set_total
       variables:
         new_total: float
@@ -100,20 +95,20 @@ number:
     optimistic: true
     unit_of_measurement: ${volume_unit}
 
-  # - platform: template
-  #   id: ${prefix_id}temperature_offset
-  #   name: ${prefix_name}Temperature Offset
-  #   unit_of_measurement: '°C'
-  #   min_value: -100
-  #   max_value: 100
-  #   step: 0.1
-  #   mode: box
-  #   update_interval: never
-  #   optimistic: true
-  #   restore_value: true
-  #   initial_value: 33
-  #   icon: 'mdi:thermometer'
-  #   entity_category: config
+  - platform: template
+    id: ${prefix_id}temperature_offset
+    name: ${prefix_name}Temperature Offset
+    unit_of_measurement: '°C'
+    min_value: -100
+    max_value: 100
+    step: 0.1
+    mode: box
+    update_interval: never
+    optimistic: true
+    restore_value: true
+    initial_value: 33
+    icon: 'mdi:thermometer'
+    entity_category: config
 
   - platform: template
     id: ${prefix_id}threshold_lower
@@ -193,4 +188,112 @@ button:
           id(${prefix_id}calibrating) = false;
           float x_range = id(${prefix_id}calibrating_axis_x_max) - id(${prefix_id}calibrating_axis_x_min);
           float y_range = id(${prefix_id}calibrating_axis_y_max) - id(${prefix_id}calibrating_axis_y_min);
-          float z_range = id(${prefix_id}calibrating_axis_z_max) - id(${p
+          float z_range = id(${prefix_id}calibrating_axis_z_max) - id(${prefix_id}calibrating_axis_z_min);
+          if (x_range < 0) {
+            ESP_LOGW("${prefix_id}calibration", "Didn't get any values for x");
+          } else {
+            ESP_LOGI("${prefix_id}calibration", "x ranged from %.2f to %.2f",
+                     id(${prefix_id}calibrating_axis_x_min), id(${prefix_id}calibrating_axis_x_max));
+          }
+          if (y_range < 0) {
+            ESP_LOGW("${prefix_id}calibration", "Didn't get any values for y");
+          } else {
+            ESP_LOGI("${prefix_id}calibration", "y ranged from %.2f to %.2f",
+                     id(${prefix_id}calibrating_axis_y_min), id(${prefix_id}calibrating_axis_y_max));
+          }
+          if (z_range < 0) {
+            ESP_LOGW("${prefix_id}calibration", "Didn't get any values for z");
+          } else {
+            ESP_LOGI("${prefix_id}calibration", "z ranged from %.2f to %.2f",
+                     id(${prefix_id}calibrating_axis_z_min), id(${prefix_id}calibrating_axis_z_max));
+          }
+          std::string axis_with_largest_range;
+          float min, max;
+          if (x_range > 20 && x_range > y_range && x_range > z_range) {
+            axis_with_largest_range = "x";
+            min = id(${prefix_id}calibrating_axis_x_min);
+            max = id(${prefix_id}calibrating_axis_x_max);
+          } else if (y_range > 20 && y_range > x_range && y_range > z_range) {
+            axis_with_largest_range = "y";
+            min = id(${prefix_id}calibrating_axis_y_min);
+            max = id(${prefix_id}calibrating_axis_y_max);
+          } else if (z_range > 20 && z_range > x_range && z_range > y_range) {
+            axis_with_largest_range = "z";
+            min = id(${prefix_id}calibrating_axis_z_min);
+            max = id(${prefix_id}calibrating_axis_z_max);
+          } else {
+            ESP_LOGE("${prefix_id}calibration", "No axis had a range of more than 20 uT. Try again with a different calibration time.");
+            return;
+          }
+          ESP_LOGI("${prefix_id}calibration", "Selecting %s axis with min %.2f and max %.2f",
+                   axis_with_largest_range.c_str(), min, max);
+          id(${prefix_id}axis).publish_state(axis_with_largest_range);
+          id(${prefix_id}threshold_lower).publish_state(min + 0.20 * (max - min));
+          id(${prefix_id}threshold_upper).publish_state(min + 0.80 * (max - min));
+
+sensor:
+  - platform: hmc5883l
+    id: ${prefix_id}hmc5883l_sensor
+    address: 0x1E
+    update_interval: ${hmc5883l_update_interval}
+    x_raw:
+      name: ${prefix_name}HMC5883L x raw
+      icon: mdi:magnet
+      entity_category: diagnostic
+      filters:
+        - filter_out: 0.00
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 5
+    y_raw:
+      name: ${prefix_name}HMC5883L y raw
+      icon: mdi:magnet
+      entity_category: diagnostic
+      filters:
+        - filter_out: 0.00
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 5
+    z_raw:
+      name: ${prefix_name}HMC5883L z raw
+      icon: mdi:magnet
+      entity_category: diagnostic
+      filters:
+        - filter_out: 0.00
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 5
+    temperature:
+      name: ${prefix_name}HMC5883L temperature
+      entity_category: diagnostic
+      filters:
+        - offset: !lambda return id(${prefix_id}temperature_offset).state;
+
+text_sensor:
+  - platform: version
+    name: ${prefix_name}ESPHome version
+
+binary_sensor:
+  - platform: status
+    name: ${prefix_name}Status
+
+interval:
+  - interval: 1s
+    then:
+      if:
+        condition:
+          lambda: return id(${prefix_id}calibrating);
+        then:
+          - sensor.hmc5883l_x_raw.publish:
+              id: ${prefix_id}hmc5883l_sensor
+          - sensor.hmc5883l_y_raw.publish:
+              id: ${prefix_id}hmc5883l_sensor
+          - sensor.hmc5883l_z_raw.publish:
+              id: ${prefix_id}hmc5883l_sensor
+          - lambda: |-
+              id(${prefix_id}calibrating_axis_x_min) = std::min(id(${prefix_id}calibrating_axis_x_min), id(${prefix_id}hmc5883l_sensor).state.x);
+              id(${prefix_id}calibrating_axis_x_max) = std::max(id(${prefix_id}calibrating_axis_x_max), id(${prefix_id}hmc5883l_sensor).state.x);
+              id(${prefix_id}calibrating_axis_y_min) = std::min(id(${prefix_id}calibrating_axis_y_min), id(${prefix_id}hmc5883l_sensor).state.y);
+              id(${prefix_id}calibrating_axis_y_max) = std::max(id(${prefix_id}calibrating_axis_y_max), id(${prefix_id}hmc5883l_sensor).state.y);
+              id(${prefix_id}calibrating_axis_z_min) = std::min(id(${prefix_id}calibrating_axis_z_min), id(${prefix_id}hmc5883l_sensor).state.z);
+              id(${prefix_id}calibrating_axis_z_max) = std::max(id(${prefix_id}calibrating_axis_z_max), id(${prefix_id}hmc5883l_sensor).state.z);
