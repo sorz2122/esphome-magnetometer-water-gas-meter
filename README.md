@@ -6,13 +6,13 @@ TLDR; Add this to your ESPHome device configuration:
 
 ```yaml
 substitutions:
-  volume_unit: 'gal'
+  volume_unit: 'L'
   i2c_scl: GPIO5  # D1
   i2c_sda: GPIO4  # D2
 
 packages:
   meter:
-    url: https://github.com/tronikos/esphome-magnetometer-water-gas-meter
+    url: https://github.com/sorz2122/esphome-magnetometer-water-gas-meter
     ref: main
     file: esphome-water-meter.yaml
     # Or for gas meter:
@@ -20,7 +20,7 @@ packages:
     refresh: 0s
 ```
 
-<img src="https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/9363747e-ea4d-457b-b219-90f0192fcf8d" alt="Water meter in Home Assistant" width=40%>
+<img src="https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/9363747e-ea4d-457b-b219-90f0192fcf8d" alt="Water meter in Home Assistant" width=40%>
 
 ## Compatibility
 
@@ -44,7 +44,7 @@ converted to any engineering unit of measure for totalization, indication or pro
 
 #### Magnetometer position for water meter
 
-<img src="https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/130f871c-dfd5-45e2-9837-b23bf8f545e7" alt="water meter sensor position" width=40%>
+<img src="https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/130f871c-dfd5-45e2-9837-b23bf8f545e7" alt="water meter sensor position" width=40%>
 
 ### Gas meter
 
@@ -58,7 +58,7 @@ To verify compatibility install the Sensors app on your phone, place your phone 
 
 #### Magnetometer position for gas meter
 
-<img src="https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/9d5a469f-6b92-442e-b2ec-e0e2b57eead3" alt="gas meter sensor position" width=40%>
+<img src="https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/9d5a469f-6b92-442e-b2ec-e0e2b57eead3" alt="gas meter sensor position" width=40%>
 
 ## Hardware installation
 
@@ -67,24 +67,24 @@ To verify compatibility install the Sensors app on your phone, place your phone 
 - ESP8266 or ESP32 with power adapter
   - I placed mine inside the garage
   - For high flow meters ESP32 is preferred because it's faster
-- QMC5883L
+- HMC5883L (without Temp sensor)
   - I placed mine in the water meter box 20ft away from the garage
 - Ethernet cable
   - I used 32.8ft or 10m direct burial CAT6.
   - CAT6 is preferred because of its lower capacitance. CAT5 50ft or 15m [should work](https://www.youtube.com/watch?v=6v1KZBRZRCI). For 100ft you will need an active terminator such as [LTC4311](https://www.youtube.com/watch?v=nhWPxO7jx_o).
-- Some way to weather proof the QMC5883L. Some options:
+- Some way to weather proof the HMC5883L. Some options:
   - Adhesive 4:1 heat shrink tubing (this is what I used)
   - Silicone sealant
   - Nail polish
   - Hot glue
-- Some way to mount the QMC5883L on the meter. Some options:
+- Some way to mount the HMC5883L on the meter. Some options:
   - Cable zip tie (this is what I used)
   - Duct tape
 - Conduit for the ethernet cable. Can be skipped if using direct burial ethernet cable.
 
 ### Wiring
 
-QMC5883L | ESP8266
+HMC5883L | ESP8266
 --- | ---
 VCC | 5V
 GND | GND
@@ -93,11 +93,11 @@ SDA | D2
 
 The ethernet cable has 4 twisted pairs of wires. Use any solid wire color for the 4 above pins. Tie the 4 white wires together with the GND solid wire. You might need to use a header pin for the GND. If you use a header pin cut the 5 GND wires shorter to avoid the ball of wires I had...
 
-![magnetometer wiring](https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/c7052171-eee1-44cb-90f4-76cad4e46334)
-![magnetometer in adhesive heat shrink tubing](https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/0ca8c738-63c2-4d38-ae35-42bb219b88d1)
-![d1 mini wiring](https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/b8c3df8d-8111-415b-aecc-64d9c5a290c1)
-![d1 mini lego case](https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/6d8d85a0-b00c-4db9-9484-3b345e73f848)
-![driveway](https://github.com/tronikos/esphome-magnetometer-water-gas-meter/assets/9987465/69a47f3e-8d8f-4c2e-aec8-14cb729b48a4)
+![magnetometer wiring](https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/c7052171-eee1-44cb-90f4-76cad4e46334)
+![magnetometer in adhesive heat shrink tubing](https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/0ca8c738-63c2-4d38-ae35-42bb219b88d1)
+![d1 mini wiring](https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/b8c3df8d-8111-415b-aecc-64d9c5a290c1)
+![d1 mini lego case](https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/6d8d85a0-b00c-4db9-9484-3b345e73f848)
+![driveway](https://github.com/sorz2122/esphome-magnetometer-water-gas-meter/assets/9987465/69a47f3e-8d8f-4c2e-aec8-14cb729b48a4)
 
 ## Software installation
 
@@ -128,7 +128,7 @@ The ethernet cable has 4 twisted pairs of wires. Use any solid wire color for th
 
     packages:
       meter:
-        url: https://github.com/tronikos/esphome-magnetometer-water-gas-meter
+        url: https://github.com/sorz2122/esphome-magnetometer-water-gas-meter
         ref: main
         file: esphome-water-meter.yaml
         # Or for gas meter:
@@ -141,13 +141,13 @@ The ethernet cable has 4 twisted pairs of wires. Use any solid wire color for th
 
     ```yaml
     substitutions:
-      volume_unit: 'gal'
+      volume_unit: 'L'
       i2c_scl: GPIO5  # D1
       i2c_sda: GPIO4  # D2
 
     packages:
       meter:
-        url: https://github.com/tronikos/esphome-magnetometer-water-gas-meter
+        url: https://github.com/sorz2122/esphome-magnetometer-water-gas-meter
         ref: main
         file: esphome-water-meter.yaml
         # Or for gas meter:
