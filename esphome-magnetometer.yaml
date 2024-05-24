@@ -1,5 +1,5 @@
 ---
-# This config uses the HMC5883L, a triple-axis magnetometer, to read your water meter or gas meter.
+# This config uses the hmc5883L, a triple-axis magnetometer, to read your water meter or gas meter.
 
 substitutions:
   # water or gas
@@ -10,22 +10,30 @@ substitutions:
 
   # For water one of: CCF, ft³, gal, L, m³
   # For gas one of: CCF, ft³, m³
-  volume_unit: 'L'
+  volume_unit: 'gal'
 
   i2c_scl: GPIO5  # D1
   i2c_sda: GPIO4  # D2
 
-  # Set these only if you have connected two HMC5883L to one device, see esphome-two-meters.yaml
+  # Set these only if you have connected two hmc5883L to one device, see esphome-two-meters.yaml
   prefix_name: ''
   prefix_id: ''
+  
+  # Set device model (hmc5883l/hmc5883l) and address (0x1D/0x1E)
+  magnetometer: hmc5883l
+  magnetometer_address: '0x1E'
 
   hmc5883l_update_interval: '5ms'
+  #hmc5883l_oversampling: '64x'
 
   volume_per_half_rotation_initial_value: '0.01008156'
   flow_update_interval_seconds: '10'
 
 esphome:
-  min_version: "2024.4.0"
+  min_version: "2024.4.0" # This version includes https://github.com/esphome/esphome/pull/6456
+  # Default loop interval is 16ms. Setting it to 0 to make updates faster.
+  # Without setting this, the actual update interval of hmc5883l is: 6ms on ESP32, 10ms on ESP8266.
+  # With this, it's 5ms on ESP32, 8ms on ESP8266.
   on_boot:
     then:
       - lambda: App.set_loop_interval(0);
@@ -36,6 +44,8 @@ logger:
 
 api:
   services:
+    # Based on https://esphome.io/components/sensor/pulse_meter.html#re-setting-the-total-pulse-count
+    # Useful if you would like the total sensor to match what you see on your meter you are trying to match.
     - service: ${prefix_id}set_total
       variables:
         new_total: float
@@ -95,20 +105,20 @@ number:
     optimistic: true
     unit_of_measurement: ${volume_unit}
 
-  - platform: template
-    id: ${prefix_id}temperature_offset
-    name: ${prefix_name}Temperature Offset
-    unit_of_measurement: '°C'
-    min_value: -100
-    max_value: 100
-    step: 0.1
-    mode: box
-    update_interval: never
-    optimistic: true
-    restore_value: true
-    initial_value: 33
-    icon: 'mdi:thermometer'
-    entity_category: config
+  # - platform: template
+  #   id: ${prefix_id}temperature_offset
+  #   name: ${prefix_name}Temperature Offset
+  #   unit_of_measurement: '°C'
+  #   min_value: -100
+  #   max_value: 100
+  #   step: 0.1
+  #   mode: box
+  #   update_interval: never
+  #   optimistic: true
+  #   restore_value: true
+  #   initial_value: 33
+  #   icon: 'mdi:thermometer'
+  #   entity_category: config
 
   - platform: template
     id: ${prefix_id}threshold_lower
@@ -222,78 +232,149 @@ button:
             min = id(${prefix_id}calibrating_axis_z_min);
             max = id(${prefix_id}calibrating_axis_z_max);
           } else {
-            ESP_LOGE("${prefix_id}calibration", "No axis had a range of more than 20 uT. Try again with a different calibration time.");
+            ESP_LOGE("${prefix_id}calibration", "Calibration failed. No axis had a range of at least 20");
             return;
           }
-          ESP_LOGI("${prefix_id}calibration", "Selecting %s axis with min %.2f and max %.2f",
-                   axis_with_largest_range.c_str(), min, max);
-          id(${prefix_id}axis).publish_state(axis_with_largest_range);
-          id(${prefix_id}threshold_lower).publish_state(min + 0.20 * (max - min));
-          id(${prefix_id}threshold_upper).publish_state(min + 0.80 * (max - min));
+          float lower_threshold = min + (max - min) / 2 - 5;
+          float upper_threshold = min + (max - min) / 2 + 5;
+          ESP_LOGI("${prefix_id}calibration", "Selected %s axis with lower threshold: %.2f and upper threshold: %.2f",
+                   axis_with_largest_range.c_str(), lower_threshold, upper_threshold);
+          id(${prefix_id}axis).make_call().set_option(axis_with_largest_range).perform();
+          id(${prefix_id}threshold_lower).make_call().set_value(roundf(lower_threshold * 10) / 10).perform();
+          id(${prefix_id}threshold_upper).make_call().set_value(roundf(upper_threshold * 10) / 10).perform();
+
+i2c:
+  - id: ${prefix_id}i2c_bus
+    scl: ${i2c_scl}
+    sda: ${i2c_sda}
+    frequency: 50kHz
+    scan: false
 
 sensor:
-  - platform: hmc5883l
-    id: ${prefix_id}hmc5883l_sensor
-    address: 0x1E
-    update_interval: ${hmc5883l_update_interval}
-    x_raw:
-      name: ${prefix_name}HMC5883L x raw
-      icon: mdi:magnet
-      entity_category: diagnostic
-      filters:
-        - filter_out: 0.00
-        - sliding_window_moving_average:
-            window_size: 5
-            send_every: 5
-    y_raw:
-      name: ${prefix_name}HMC5883L y raw
-      icon: mdi:magnet
-      entity_category: diagnostic
-      filters:
-        - filter_out: 0.00
-        - sliding_window_moving_average:
-            window_size: 5
-            send_every: 5
-    z_raw:
-      name: ${prefix_name}HMC5883L z raw
-      icon: mdi:magnet
-      entity_category: diagnostic
-      filters:
-        - filter_out: 0.00
-        - sliding_window_moving_average:
-            window_size: 5
-            send_every: 5
-    temperature:
-      name: ${prefix_name}HMC5883L temperature
-      entity_category: diagnostic
-      filters:
-        - offset: !lambda return id(${prefix_id}temperature_offset).state;
+  # Holds the magnetic field strength value of x, y, or z depending on the axis template select.
+  # Increments counters when value crosses thresholds.
+  - platform: template
+    id: ${prefix_id}axis_value
+    internal: true
+    on_raw_value:
+      then:
+        - lambda: |-
+            if (x > id(${prefix_id}threshold_upper).state && !id(${prefix_id}axis_value_high)) {
+              id(${prefix_id}axis_value_high) = true;
+              id(${prefix_id}half_rotations_total) += 1;
+              id(${prefix_id}half_rotations_flow) += 1;
+              id(led).turn_on();
+            } else if (x < id(${prefix_id}threshold_lower).state && id(${prefix_id}axis_value_high)) {
+              id(${prefix_id}axis_value_high) = false;
+              id(led).turn_off();
+            }
+    filters:
+      - delta: 3
 
-text_sensor:
-  - platform: version
-    name: ${prefix_name}ESPHome version
-
-binary_sensor:
-  - platform: status
-    name: ${prefix_name}Status
-
-interval:
-  - interval: 1s
-    then:
-      if:
-        condition:
-          lambda: return id(${prefix_id}calibrating);
+  # https://esphome.io/components/sensor/hmc5883l.html
+  - platform: ${magnetometer}
+    id: ${prefix_id}hmc5883l_id
+    i2c_id: ${prefix_id}i2c_bus
+    address: ${magnetometer_address}
+    field_strength_x:
+      id: ${prefix_id}hmc5883l_axis_x
+      name: ${prefix_name}Magnetic Field Strength X
+      disabled_by_default: true
+      entity_category: diagnostic
+      on_raw_value:
         then:
-          - sensor.hmc5883l_x_raw.publish:
-              id: ${prefix_id}hmc5883l_sensor
-          - sensor.hmc5883l_y_raw.publish:
-              id: ${prefix_id}hmc5883l_sensor
-          - sensor.hmc5883l_z_raw.publish:
-              id: ${prefix_id}hmc5883l_sensor
+          - lambda:
+              if (id(${prefix_id}axis).state == "x") id(${prefix_id}axis_value).publish_state(x);
+              if (id(${prefix_id}calibrating)) {
+                id(${prefix_id}calibrating_axis_x_min) = min(id(${prefix_id}calibrating_axis_x_min), x);
+                id(${prefix_id}calibrating_axis_x_max) = max(id(${prefix_id}calibrating_axis_x_max), x);
+              }
+      filters:
+        - delta: 3
+    field_strength_y:
+      id: ${prefix_id}hmc5883l_axis_y
+      name: ${prefix_name}Magnetic Field Strength Y
+      disabled_by_default: true
+      entity_category: diagnostic
+      on_raw_value:
+        then:
           - lambda: |-
-              id(${prefix_id}calibrating_axis_x_min) = std::min(id(${prefix_id}calibrating_axis_x_min), id(${prefix_id}hmc5883l_sensor).state.x);
-              id(${prefix_id}calibrating_axis_x_max) = std::max(id(${prefix_id}calibrating_axis_x_max), id(${prefix_id}hmc5883l_sensor).state.x);
-              id(${prefix_id}calibrating_axis_y_min) = std::min(id(${prefix_id}calibrating_axis_y_min), id(${prefix_id}hmc5883l_sensor).state.y);
-              id(${prefix_id}calibrating_axis_y_max) = std::max(id(${prefix_id}calibrating_axis_y_max), id(${prefix_id}hmc5883l_sensor).state.y);
-              id(${prefix_id}calibrating_axis_z_min) = std::min(id(${prefix_id}calibrating_axis_z_min), id(${prefix_id}hmc5883l_sensor).state.z);
-              id(${prefix_id}calibrating_axis_z_max) = std::max(id(${prefix_id}calibrating_axis_z_max), id(${prefix_id}hmc5883l_sensor).state.z);
+              if (id(${prefix_id}axis).state == "y") id(${prefix_id}axis_value).publish_state(x);
+              if (id(${prefix_id}calibrating)) {
+                id(${prefix_id}calibrating_axis_y_min) = min(id(${prefix_id}calibrating_axis_y_min), x);
+                id(${prefix_id}calibrating_axis_y_max) = max(id(${prefix_id}calibrating_axis_y_max), x);
+              }
+      filters:
+        - delta: 3
+    field_strength_z:
+      id: ${prefix_id}hmc5883l_axis_z
+      name: ${prefix_name}Magnetic Field Strength Z
+      disabled_by_default: true
+      entity_category: diagnostic
+      on_raw_value:
+        then:
+          - lambda:
+              if (id(${prefix_id}axis).state == "z") id(${prefix_id}axis_value).publish_state(x);
+              if (id(${prefix_id}calibrating)) {
+                id(${prefix_id}calibrating_axis_z_min) = min(id(${prefix_id}calibrating_axis_z_min), x);
+                id(${prefix_id}calibrating_axis_z_max) = max(id(${prefix_id}calibrating_axis_z_max), x);
+              }
+      filters:
+        - delta: 3
+    # temperature:
+    #   id: ${prefix_id}hmc5883l_temperature
+    #   name: ${prefix_name}Temperature
+    #   filters:
+    #     - lambda: "return x + id(${prefix_id}temperature_offset).state;"
+    #     - sliding_window_moving_average:
+    #         window_size: 3000
+    #         send_every: 3000
+    #     - or:
+    #         - throttle: 300s
+    #         - delta: 0.5
+    oversampling: ${hmc5883l_oversampling}
+    update_interval: ${hmc5883l_update_interval}
+
+  - platform: template
+    id: ${prefix_id}sensor_half_rotations_total
+    name: ${prefix_name}Half rotations total
+    lambda: return id(${prefix_id}half_rotations_total);
+    update_interval: 1s
+    disabled_by_default: true
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    state_class: 'total_increasing'
+    icon: 'mdi:counter'
+    filters:
+      - delta: 1
+
+  - platform: template
+    id: ${prefix_id}sensor_total
+    name: ${prefix_name}Total
+    lambda: return id(${prefix_id}half_rotations_total) * id(${prefix_id}volume_per_half_rotation).state;
+    update_interval: 10s
+    accuracy_decimals: 2
+    device_class: ${device_class}
+    icon: ${device_icon}
+    state_class: total_increasing
+    unit_of_measurement: ${volume_unit}
+    filters:
+      - or:
+          - throttle: 60s
+          - delta: 0.01
+
+  - platform: template
+    id: ${prefix_id}sensor_flow
+    name: ${prefix_name}Flow
+    lambda: |-
+      float flow = id(${prefix_id}half_rotations_flow) * id(${prefix_id}volume_per_half_rotation).state * 60.0 / ${flow_update_interval_seconds};
+      id(${prefix_id}half_rotations_flow) = 0;
+      return flow;
+    update_interval: ${flow_update_interval_seconds}s
+    accuracy_decimals: 2
+    state_class: measurement
+    unit_of_measurement: ${volume_unit}/min
+    filters:
+      - or:
+          - throttle: 60s
+          - delta: 0.01
