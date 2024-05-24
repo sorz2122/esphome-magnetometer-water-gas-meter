@@ -20,7 +20,7 @@ substitutions:
   prefix_id: ''
   
   # Set device model (qmc5883l/hmc5883l) and address (0x1D/0x1E)
-  magnetometer: Hmc5883l
+  magnetometer: hmc5883l
   magnetometer_address: '0x1E'
 
   qmc5883l_update_interval: '5ms'
