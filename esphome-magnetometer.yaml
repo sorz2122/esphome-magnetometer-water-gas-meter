@@ -10,7 +10,7 @@ substitutions:
 
   # For water one of: CCF, ft³, gal, L, m³
   # For gas one of: CCF, ft³, m³
-  volume_unit: 'gal'
+  volume_unit: 'L'
 
   i2c_scl: GPIO5  # D1
   i2c_sda: GPIO4  # D2
@@ -20,8 +20,8 @@ substitutions:
   prefix_id: ''
   
   # Set device model (qmc5883l/hmc5883l) and address (0x1D/0x1E)
-  magnetometer: qmc5883l
-  magnetometer_address: '0x1D'
+  magnetometer: Hmc5883l
+  magnetometer_address: '0x1E'
 
   qmc5883l_update_interval: '5ms'
   qmc5883l_oversampling: '64x'
